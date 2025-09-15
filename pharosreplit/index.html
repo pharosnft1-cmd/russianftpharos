@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pharos Russia NFT Mint</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 24px 16px;
+            text-align: center;
+            /* Фон */
+            background-repeat: no-repeat;
+            background-size: cover;
+            background-position: center center;
+            background-attachment: fixed;
+        }
+        .container { max-width: 720px; margin: 0 auto; }
+        .card {
+            background: rgba(255,255,255,0.88);
+            backdrop-filter: blur(6px);
+            border: 1px solid #eaeaea;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+        }
+        h1 { margin: 8px 0 6px; font-size: 24px; }
+        p.sub { margin: 0 0 14px; color: #444; }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 5px;
+        }
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+        .btn-secondary { background:#6c757d; }
+        .btn-info { background:#17a2b8; }
+        #status {
+            margin: 16px 0 8px;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .success {
+            background: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background: #f2dede;
+            color: #a94442;
+        }
+        .row { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+        .full { width:100%; }
+        input[type="text"] { width:100%; padding:10px; border:1px solid #ccc; border-radius:6px; }
+        details { text-align:left; margin: 8px 0 4px; }
+        details summary { cursor:pointer; padding:8px 0; font-weight:600; }
+    </style>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests" />
+    <meta name="referrer" content="no-referrer" />
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>Pharos Russia — Минт NFT</h1>
+      <p class="sub">Минт одного NFT за газ в тестовой сети Pharos</p>
+      <div style="margin:12px 0;">
+          <img id="heroImg" alt="Pharos Russia NFT" style="max-width:100%;border-radius:10px;border:1px solid #eee;display:none;" />
+      </div>
+
+      <details>
+        <summary>Настройки сети и контракта</summary>
+        <div style="margin:8px 0;">
+          <div style="margin-bottom:8px;">
+              <input id="addrInput" placeholder="Адрес контракта 0x..." />
+          </div>
+          <div class="row">
+              <input id="chainInput" placeholder="Chain ID (hex, например 0x...)" style="flex:1;min-width:220px;" />
+              <button id="saveConfigButton" title="Сохранить адрес/chainId" class="btn-secondary">Сохранить</button>
+          </div>
+        </div>
+      </details>
+
+      <div class="row">
+          <button id="connectButton">Подключить MetaMask</button>
+          <button id="connectOKXButton" class="btn-info">Подключить OKX Wallet</button>
+          <button id="switchNetworkButton" class="btn-secondary">Переключить сеть</button>
+      </div>
+      <button id="mintButton" class="full">Минт NFT</button>
+
+      <div id="status"></div>
+      <div id="mintCounter" style="margin-top:8px;"></div>
+
+      <div style="margin-top:12px;">
+          <a href="https://t.me/hrumdrops" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin:10px;padding:10px 20px;background:#229ED9;color:#fff;border-radius:6px;text-decoration:none;">Подписаться на сообщество</a>
+      </div>
+
+      <div id="nftPreview" style="margin-top:20px; display:none;">
+          <h3 style="margin:8px 0;">Предпросмотр NFT</h3>
+          <div id="nftName" style="font-weight:bold;"></div>
+          <div id="nftDesc" style="margin:6px 0 10px 0;"></div>
+          <img id="nftImg" alt="NFT image" style="max-width:100%;border-radius:8px;border:1px solid #eee;" />
+      </div>
+    </div>
+  </div>
+
+    <script>
+        // Значения по умолчанию (можно оставить плейсхолдеры)
+        const DEFAULT_CONTRACT_ADDRESS = '0x1F88A3883e2CA904f845d2737E7e1464d0DA2Da9';
+        const DEFAULT_PHAROS_CHAIN_ID = '0xA8230';
+        // ABI контракта
+        const CONTRACT_ABI = [
+            {
+                "inputs": [],
+                "stateMutability": "nonpayable",
+                "type": "constructor"
+            },
+            {
+                "anonymous": false,
+                "inputs": [
+                    {
+                        "indexed": true,
+                        "internalType": "address",
+                        "name": "minter",
+                        "type": "address"
+                    },
+                    {
+                        "indexed": false,
+                        "internalType": "uint256",
+                        "name": "tokenId",
+                        "type": "uint256"
+                    }
+                ],
+                "name": "NFTMinted",
+                "type": "event"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "address",
+                        "name": "user",
+                        "type": "address"
+                    }
+                ],
+                "name": "hasMinted",
+                "outputs": [
+                    {
+                        "internalType": "bool",
+                        "name": "",
+                        "type": "bool"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "mint",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "newMaxSupply",
+                        "type": "uint256"
+                    }
+                ],
+                "name": "setMaxSupply",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "TOKEN_ID",
+                "outputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "",
+                        "type": "uint256"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "maxSupply",
+                "outputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "",
+                        "type": "uint256"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "totalMinted",
+                "outputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "",
+                        "type": "uint256"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ];
+
+        let provider;
+        let signer;
+        let contract;
+        let currentAccount;
+
+        function getConfiguredAddress() {
+            const saved = localStorage.getItem('cfg_contract_address') || '';
+            const fromInput = (document.getElementById('addrInput')?.value || '').trim();
+            const value = fromInput || saved || DEFAULT_CONTRACT_ADDRESS;
+            return value;
+        }
+
+        function getConfiguredChainId() {
+            const saved = localStorage.getItem('cfg_chain_id') || '';
+            const fromInput = (document.getElementById('chainInput')?.value || '').trim();
+            const value = fromInput || saved || DEFAULT_PHAROS_CHAIN_ID;
+            return value;
+        }
+
+        function isContractConfigured() {
+            return /^0x[a-fA-F0-9]{40}$/.test(getConfiguredAddress());
+        }
+
+        function showStatus(message, type) {
+            const el = document.getElementById('status');
+            el.textContent = message || '';
+            el.className = '';
+            if (type === 'success') el.classList.add('success');
+            if (type === 'error') el.classList.add('error');
+        }
+
+        function setMintEnabled(enabled) {
+            const mintButton = document.getElementById('mintButton');
+            mintButton.disabled = !enabled;
+        }
+
+        async function loadMetadataPreview() {
+            try {
+                const res = await fetch('1.json', { cache: 'no-store' });
+                if (!res.ok) return;
+                const meta = await res.json();
+                const nameEl = document.getElementById('nftName');
+                const descEl = document.getElementById('nftDesc');
+                const imgEl = document.getElementById('nftImg');
+                if (meta?.name) nameEl.textContent = meta.name;
+                if (meta?.description) descEl.textContent = meta.description;
+                if (meta?.image) {
+                    let src = meta.image;
+                    if (src.startsWith('ipfs://')) {
+                        // простой IPFS gateway для предпросмотра
+                        src = 'https://ipfs.io/ipfs/' + src.replace('ipfs://', '');
+                    }
+                    imgEl.src = src;
+                } else {
+                    imgEl.removeAttribute('src');
+                }
+                document.getElementById('nftPreview').style.display = 'block';
+            } catch (_) {
+                // без предпросмотра, если файла нет
+            }
+        }
+
+        // Инициализация при загрузке страницы
+        window.addEventListener('load', async () => {
+            // Инициализация полей из localStorage
+            const savedAddr = localStorage.getItem('cfg_contract_address') || '';
+            const savedChain = localStorage.getItem('cfg_chain_id') || '';
+            if (savedAddr) document.getElementById('addrInput').value = savedAddr;
+            if (savedChain) document.getElementById('chainInput').value = savedChain;
+
+            // Если адрес контракта не задан — блокируем минт и показываем подсказку
+            if (!isContractConfigured()) {
+                setMintEnabled(false);
+                showStatus('Укажите адрес смарт-контракта и Chain ID, затем сохраните.', 'error');
+            }
+
+            loadMetadataPreview();
+            // Показать геро-изображение, если файл существует
+            const hero = document.getElementById('heroImg');
+            try {
+                const r = await fetch('pharosRussiaNFT.jpg', { method: 'HEAD' });
+                if (r.ok) { hero.src = 'pharosRussiaNFT.jpg'; hero.style.display = 'block'; }
+            } catch (_) {}
+
+            // Фоновое изображение: сначала ищем в текущей папке, затем в родительской
+            try {
+                const r1 = await fetch('pharos1.jpg', { method: 'HEAD' });
+                if (r1.ok) {
+                    document.body.style.backgroundImage = "linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.35)), url('pharos1.jpg')";
+                } else {
+                    const r2 = await fetch('../pharos1.jpg', { method: 'HEAD' });
+                    if (r2.ok) {
+                        document.body.style.backgroundImage = "linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.35)), url('../pharos1.jpg')";
+                    }
+                }
+            } catch (_) {}
+            if (typeof window.ethereum !== 'undefined') {
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                try {
+                    const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                    const target = getConfiguredChainId();
+                    if (target !== '0x...' && target && chainId !== target) {
+                        showStatus('Ошибка: подключитесь к Pharos Testnet в MetaMask', 'error');
+                    }
+                } catch (error) {
+                    console.error(error);
+                }
+            } else {
+                showStatus('Установите MetaMask', 'error');
+            }
+        });
+
+        // Реакция на смену аккаунта/сети
+        if (typeof window.ethereum !== 'undefined') {
+            window.ethereum.on('accountsChanged', () => {
+                location.reload();
+            });
+            window.ethereum.on('chainChanged', () => {
+                location.reload();
+            });
+        }
+
+        // Подключение MetaMask
+        document.getElementById('saveConfigButton').addEventListener('click', () => {
+            const addr = (document.getElementById('addrInput').value || '').trim();
+            const chain = (document.getElementById('chainInput').value || '').trim();
+            if (addr) localStorage.setItem('cfg_contract_address', addr);
+            if (chain) localStorage.setItem('cfg_chain_id', chain);
+            if (isContractConfigured()) {
+                showStatus('Конфигурация сохранена. Теперь можно подключаться и минтить.', 'success');
+                setMintEnabled(true);
+            } else {
+                setMintEnabled(false);
+                showStatus('Некорректный адрес контракта. Проверьте формат 0x...', 'error');
+            }
+        });
+
+        document.getElementById('switchNetworkButton').addEventListener('click', async () => {
+            try {
+                const target = getConfiguredChainId();
+                if (!target || target === '0x...') {
+                    showStatus('Укажите корректный Chain ID (hex), затем сохраните.', 'error');
+                    return;
+                }
+                await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: target }] });
+                showStatus('Сеть переключена.', 'success');
+            } catch (error) {
+                console.error(error);
+                showStatus('Не удалось переключить сеть: ' + (error?.message || error), 'error');
+            }
+        });
+
+        // Подключение OKX Wallet
+        document.getElementById('connectOKXButton').addEventListener('click', async () => {
+            try {
+                const eth = window.okxwallet?.ethereum;
+                if (!eth) { showStatus('Установите OKX Wallet.', 'error'); return; }
+
+                if (!isContractConfigured()) { showStatus('Сначала укажите корректный адрес контракта (0x...) и сохраните.', 'error'); return; }
+
+                const chainId = await eth.request({ method: 'eth_chainId' });
+                const target = getConfiguredChainId();
+                if (target !== '0x...' && target && chainId !== target) { showStatus('Неправильная сеть. Подключитесь к Pharos Testnet.', 'error'); return; }
+
+                const accounts = await eth.request({ method: 'eth_requestAccounts' });
+                currentAccount = accounts[0];
+                provider = new ethers.providers.Web3Provider(eth);
+                signer = provider.getSigner();
+                contract = new ethers.Contract(getConfiguredAddress(), CONTRACT_ABI, signer);
+
+                showStatus('OKX Wallet подключён: ' + currentAccount, 'success');
+
+                const hasMinted = await contract.hasMinted(currentAccount);
+                setMintEnabled(!hasMinted);
+                if (hasMinted) showStatus('Вы уже заминтили NFT на этот адрес.', 'success');
+
+                refreshCounters();
+            } catch (error) {
+                console.error(error);
+                showStatus('Ошибка подключения OKX: ' + (error?.message || error), 'error');
+            }
+        });
+
+        document.getElementById('connectButton').addEventListener('click', async () => {
+            try {
+                if (typeof window.ethereum === 'undefined') {
+                    showStatus('Установите MetaMask', 'error');
+                    return;
+                }
+
+                if (!isContractConfigured()) {
+                    showStatus('Сначала укажите корректный адрес контракта (0x...) в коде.', 'error');
+                    return;
+                }
+
+                // Проверка сети
+                const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                const target = getConfiguredChainId();
+                if (target !== '0x...' && target && chainId !== target) {
+                    showStatus('Неправильная сеть. Подключитесь к Pharos Testnet.', 'error');
+                    return;
+                }
+
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                currentAccount = accounts[0];
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                signer = provider.getSigner();
+                contract = new ethers.Contract(getConfiguredAddress(), CONTRACT_ABI, signer);
+
+                showStatus('MetaMask подключен: ' + currentAccount, 'success');
+
+                // Проверяем, минтил ли пользователь NFT
+                const hasMinted = await contract.hasMinted(currentAccount);
+                if (hasMinted) {
+                    setMintEnabled(false);
+                    showStatus('Вы уже заминтили NFT на этот адрес.', 'success');
+                } else {
+                    setMintEnabled(true);
+                }
+                await refreshCounters();
+            } catch (error) {
+                console.error(error);
+                showStatus('Ошибка подключения: ' + (error && error.message ? error.message : error), 'error');
+            }
+        });
+
+        // Минт NFT
+        document.getElementById('mintButton').addEventListener('click', async () => {
+            try {
+                if (!contract) {
+                    showStatus('Сначала подключите MetaMask.', 'error');
+                    return;
+                }
+                setMintEnabled(false);
+                showStatus('Отправка транзакции на минт...');
+                const tx = await contract.mint();
+                const receipt = await tx.wait();
+                showStatus('Успех! Транзакция подтверждена: ' + receipt.transactionHash, 'success');
+                setMintEnabled(false);
+                await refreshCounters();
+            } catch (error) {
+                console.error(error);
+                showStatus('Ошибка минта: ' + (error && error.message ? error.message : error), 'error');
+                setMintEnabled(true);
+            }
+        });
+
+        // Счётчик минта (totalMinted / maxSupply)
+        async function refreshCounters() {
+            try {
+                if (!contract) return;
+                const minted = await contract.totalMinted();
+                const max = await contract.maxSupply();
+                const counterEl = document.getElementById('mintCounter');
+                counterEl.textContent = `Сминчено: ${minted.toString()} / ${max.toString()}`;
+            } catch (_) {}
+        }
+
+        setInterval(refreshCounters, 8000);
+    </script>
+</body>
+</html>
+
+
